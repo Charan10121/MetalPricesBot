@@ -1,6 +1,7 @@
 import cloudscraper
 import os
 import re
+import requests
 from bs4 import BeautifulSoup
 
 # --- CONFIGURATION ---
@@ -8,11 +9,14 @@ TOKEN = os.getenv("TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 PRICE_FILE = "last_price.txt"
 
+# Defined constants to avoid repetition
+GOLD_URL = "https://www.goodreturns.in/gold-rates/hyderabad.html"
+SILVER_URL = "https://www.goodreturns.in/silver-rates/hyderabad.html"
+
 def clean_price(price_str):
     """Removes '₹', commas, and extra text. Returns clean number string."""
     if not price_str:
         return "N/A"
-    # Find the first sequence of digits, optionally with a comma
     match = re.search(r"[\d,]+", price_str)
     if match:
         return match.group(0)
@@ -21,28 +25,18 @@ def clean_price(price_str):
 def get_price_from_header(soup, header_pattern):
     """Finds a header matching the pattern, gets the next table, and finds the 1g row."""
     try:
-        # 1. Find the header that contains the text (e.g., "24 Carat")
+        # Find header (h2-h4) containing the pattern
         header = soup.find(lambda tag: tag.name in ["h2", "h3", "h4"] and header_pattern.lower() in tag.get_text().lower())
         
-        if not header:
-            return "N/A"
-
-        # 2. Find the next table after this header
-        table = header.find_next("table")
-        if not table:
-            return "N/A"
-
-        # 3. Iterate rows to find the "1 gram" entry
-        rows = table.find_all("tr")
-        for row in rows:
-            cols = row.find_all("td")
-            if len(cols) >= 2:
-                col0_text = cols[0].get_text().strip().lower()
-                # Match "1", "1g", "1 gram", "1 gm"
-                if col0_text in ["1", "1g", "1 gram", "1 gm"]:
-                    # Price is usually in the 2nd column (index 1)
-                    return clean_price(cols[1].get_text())
-        
+        if header:
+            table = header.find_next("table")
+            if table:
+                for row in table.find_all("tr"):
+                    cols = row.find_all("td")
+                    if len(cols) >= 2:
+                        col0 = cols[0].get_text().strip().lower()
+                        if col0 in ["1", "1g", "1 gram", "1 gm"]:
+                            return clean_price(cols[1].get_text())
     except Exception as e:
         print(f"Error extracting {header_pattern}: {e}")
     
@@ -54,12 +48,10 @@ def get_hyderabad_rates():
 
     # --- 1. FETCH GOLD ---
     try:
-        url = "https://www.goodreturns.in/gold-rates/hyderabad.html"
-        print(f"📡 Fetching Gold from {url}...")
-        res = scraper.get(url)
+        print(f"📡 Fetching Gold from {GOLD_URL}...")
+        res = scraper.get(GOLD_URL)
         if res.status_code == 200:
             soup = BeautifulSoup(res.text, 'html.parser')
-            # Look for headers containing these exact keywords
             data["24K"] = get_price_from_header(soup, "24 Carat")
             data["22K"] = get_price_from_header(soup, "22 Carat")
         else:
@@ -69,12 +61,10 @@ def get_hyderabad_rates():
 
     # --- 2. FETCH SILVER ---
     try:
-        url = "https://www.goodreturns.in/silver-rates/hyderabad.html"
-        print(f"📡 Fetching Silver from {url}...")
-        res = scraper.get(url)
+        print(f"📡 Fetching Silver from {SILVER_URL}...")
+        res = scraper.get(SILVER_URL)
         if res.status_code == 200:
             soup = BeautifulSoup(res.text, 'html.parser')
-            # Look for header "Silver" or "Silver Rate"
             data["Silver"] = get_price_from_header(soup, "Silver")
         else:
             print(f"❌ Silver Request Failed: {res.status_code}")
@@ -88,34 +78,60 @@ def send_telegram(message):
         print("ℹ️ Telegram skipped: Missing keys.")
         return
     
-    import requests
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
     try:
         requests.post(url, json=payload)
     except Exception as e:
         print(f"❌ Telegram Send Error: {e}")
+        
+def get_price_diff(current_str, last_str):
+    """Calculates difference and returns formatted string with emoji."""
+    try:
+        curr = float(current_str.replace(",", ""))
+        last = float(last_str.replace(",", ""))
+        diff = curr - last
+        
+        if diff > 0:
+            return f" (₹{int(diff)} 🔺)"
+        elif diff < 0:
+            return f" (₹{int(abs(diff))} 🔻)"
+        return ""
+    except (ValueError, AttributeError):
+        return ""
 
 if __name__ == "__main__":
     current_data = get_hyderabad_rates()
     print(f"🔎 Extracted Data: {current_data}")
     
-    # Check if we successfully fetched at least one gold price
     if current_data["24K"] != "N/A":
         current_state = f"{current_data['24K']}-{current_data['22K']}-{current_data['Silver']}"
         
+        # Load last prices
+        last_prices = {"24K": "N/A", "22K": "N/A", "Silver": "N/A"}
         last_state = ""
+        
         if os.path.exists(PRICE_FILE):
             with open(PRICE_FILE, "r") as f:
                 last_state = f.read().strip()
+                parts = last_state.split("-")
+                if len(parts) == 3:
+                    last_prices = {"24K": parts[0], "22K": parts[1], "Silver": parts[2]}
         
         if current_state != last_state:
-            msg = (f"💰 *Hyderabad Price Update*\n\n"
-                   f"🟡 *24K Gold:* ₹{current_data['24K']}/gm\n"
-                   f"🟠 *22K Gold:* ₹{current_data['22K']}/gm\n"
-                   f"⚪ *Silver:* ₹{current_data['Silver']}/gm\n\n"
-                   f"📈 _Price updated on website._")
+            # Calculate differences
+            diff_24k = get_price_diff(current_data["24K"], last_prices["24K"])
+            diff_22k = get_price_diff(current_data["22K"], last_prices["22K"])
+            diff_silver = get_price_diff(current_data["Silver"], last_prices["Silver"])
             
+            # Clean clickable links
+            msg = (f"💰 *Hyderabad Price Update*\n\n"
+                   f"🟡 *[24K Gold]({GOLD_URL}):* ₹{current_data['24K']}/gm{diff_24k}\n"
+                   f"🟠 *[22K Gold]({GOLD_URL}):* ₹{current_data['22K']}/gm{diff_22k}\n"
+                   f"⚪ *[Silver]({SILVER_URL}):* ₹{current_data['Silver']}/gm{diff_silver}\n\n"
+                   f"📈 [Check Source on Website]({GOLD_URL})")
+            
+            print(msg) 
             send_telegram(msg)
             
             with open(PRICE_FILE, "w") as f:
