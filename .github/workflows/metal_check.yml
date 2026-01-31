@@ -1,4 +1,5 @@
 name: Hourly Gold Update
+
 on:
   schedule:
     - cron: '0 */3 * * *' # Runs every 3 hours
@@ -7,16 +8,29 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # 1. Permission to "save" the file back to your repo
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
       - name: Install dependencies
         run: pip install requests beautifulsoup4
+
       - name: Run Scraper
         env:
           TOKEN: ${{ secrets.TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python metal-bot-code.py
+
+      - name: Save memory (Last Price) back to Repo
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add last_price.txt
+          # 2. Only commit if the file actually changed to avoid errors
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update last seen price" && git push)
