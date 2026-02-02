@@ -126,10 +126,10 @@ if __name__ == "__main__":
             
             # Clean clickable links
             msg = (f"💰 *Hyderabad Price Update*\n\n"
-                   f"🟡 *[24K Gold]({GOLD_URL}):* ₹{current_data['24K']}/gm{diff_24k}\n"
-                   f"🟠 *[22K Gold]({GOLD_URL}):* ₹{current_data['22K']}/gm{diff_22k}\n"
-                   f"⚪ *[Silver]({SILVER_URL}):* ₹{current_data['Silver']}/gm{diff_silver}\n\n"
-                   f"📈 [Check Source on Website]({GOLD_URL})")
+                   f"🟡 *24K Gold:* ₹{current_data['24K']}/gm{diff_24k}\n"
+                   f"🟠 *22K Gold:* ₹{current_data['22K']}/gm{diff_22k}\n"
+                   f"⚪ *Silver:* ₹{current_data['Silver']}/gm{diff_silver}\n\n"
+                   f"📈 [Check Source on Website]\n({GOLD_URL})\n({SILVER_URL})")
             
             print(msg) 
             send_telegram(msg)
@@ -141,3 +141,4 @@ if __name__ == "__main__":
             print("ℹ️ Prices unchanged.")
     else:
         print("❌ Failed to scrape valid data. Check website layout.")
+
