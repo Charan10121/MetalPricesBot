@@ -122,7 +122,7 @@ if __name__ == "__main__":
 
         if SEND_ALWAYS: 
             send_always(current_data)
-            return
+            raise SystemExit
         
         # Load last prices
         last_prices = {"24K": "N/A", "22K": "N/A", "Silver": "N/A"}
@@ -157,5 +157,6 @@ if __name__ == "__main__":
             print("ℹ️ Prices unchanged.")
     else:
         print("❌ Failed to scrape valid data. Check website layout.")
+
 
 
