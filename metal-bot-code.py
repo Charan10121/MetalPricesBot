@@ -94,11 +94,12 @@ def get_price_diff(current_str, last_str):
         curr = float(current_str.replace(",", ""))
         last = float(last_str.replace(",", ""))
         diff = curr - last
+        pct_change = (diff / last) * 100 if last != 0 else 0
         
         if diff > 0:
-            return f" (₹{int(diff)} 🔺)"
+            return f" (₹{int(diff)} 🔺, {pct_change:.2f}% ↑)"
         elif diff < 0:
-            return f" (₹{int(abs(diff))} 🔻)"
+            return f" (₹{int(abs(diff))} 🔻, {abs(pct_change):.2f}% ↓)"
         return ""
     except (ValueError, AttributeError):
         return ""
